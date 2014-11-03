@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"github.com/goodgravy/steno/stenoimage"
+	"github.com/goodgravy/stegano/image"
 	"os"
 	"strings"
 )
@@ -14,7 +14,7 @@ var outputFile string
 var revealing bool
 
 func init() {
-	flag.StringVar(&inputFile, "input", "original.jpeg", "Path to the image used as input")
+	flag.StringVar(&inputFile, "input", "original.png", "Path to the image used as input")
 	flag.StringVar(&outputFile, "output", "output.png", "When hiding, we will destructively write the new image to this path")
 	flag.BoolVar(&revealing, "reveal", false, "Instead reveal the text hidden in an image")
 
@@ -33,9 +33,9 @@ func readTextToHide() string {
 
 func main() {
 	if revealing {
-		text := stenoimage.RevealTextInImage(inputFile)
+		text := image.RevealTextInImage(inputFile)
 		fmt.Printf("Your text: %q\n", text)
 	} else {
-		stenoimage.HideStringInImage(readTextToHide(), inputFile, outputFile)
+		image.HideStringInImage(readTextToHide(), inputFile, outputFile)
 	}
 }

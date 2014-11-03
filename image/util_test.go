@@ -1,4 +1,4 @@
-package stenoimage
+package image
 
 import (
 	"testing"
