@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func TestBitsInThrees(t *testing.T) {
+func TestBitsInThreesFromBytes(t *testing.T) {
 	test(t, []byte{1},      []uint8{0, 0, 2})
 	test(t, []byte{129},    []uint8{4, 0, 2})
 	test(t, []byte{255},    []uint8{7, 7, 6})
@@ -12,10 +12,29 @@ func TestBitsInThrees(t *testing.T) {
 	test(t, []byte{1, 129}, []uint8{0, 0, 3, 0, 0, 4})
 }
 
+func TestDecode(t *testing.T) {
+	var tests = []struct{
+		in []byte
+		want string
+	}{
+		{[]byte{}, ""},
+		{[]byte{97}, "a"},
+		{[]byte{97, 13, 98}, "a\rb"},
+	}
+
+	for _, c := range tests {
+		got := string(decode(c.in))
+
+		if got != c.want {
+			t.Errorf("Wanted %q, got %q\n", c.want, got)
+		}
+	}
+}
+
 func test(t *testing.T, input []byte, expected []uint8) {
 	ch := make(chan uint8)
 
-	go BitsInThreesFromBytes(input, ch)
+	go bitsInThreesFromBytes(input, ch)
 
 	result := readThreeBits(ch, len(expected))
 
