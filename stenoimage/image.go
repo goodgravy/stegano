@@ -1,8 +1,7 @@
-package main
+package stenoimage
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"image"
 	"image/color"
@@ -10,60 +9,13 @@ import (
 	"image/png"
 	_ "image/jpeg"
 	"os"
-	"strings"
-	"unicode/utf8"
 )
 
-var inputFile string
-var outputFile string
-var revealing bool
-
-func check(e error) {
-	if e != nil {
-		panic(e)
-	}
-}
-
-func BitsInThreesFromBytes(input []byte, threeBitChan chan byte) {
-	bitChan := make(chan uint8)
-
-	go bitsFromBytes(input, bitChan)
-	chunkBits(3, bitChan, threeBitChan)
-}
-
-func BytesFromImage(img *image.RGBA, byteChan chan byte) {
+func bytesFromImage(img *image.RGBA, byteChan chan byte) {
 	bitChan := make(chan uint8)
 
 	go bitsFromImage(img, bitChan)
 	chunkBits(8, bitChan, byteChan)
-}
-
-func chunkBits(chunkSize int, bitChan chan uint8, byteChan chan byte) {
-	for {
-		current := byte(0)
-
-		for count := chunkSize - 1; count >= 0; count -= 1 {
-			bit, more := <-bitChan
-			current += bit << uint8(count)
-			if ! more {
-				byteChan <- current
-				close(byteChan)
-				return
-			}
-		}
-		byteChan <- current
-	}
-}
-
-func bitsFromBytes(input []byte, bitChan chan uint8) {
-	for _, value := range input {
-		for bitIndex := uint8(0); bitIndex < 8; bitIndex += 1 {
-			mask := 0xFE >> bitIndex
-			bit := value & uint8(mask)
-			bitChan <- bit >> (7 - bitIndex)
-		}
-	}
-	close(bitChan)
 }
 
 func bitsFromImage(img *image.RGBA, bitChan chan uint8) {
@@ -81,16 +33,6 @@ func imageToRGBA(src image.Image) *image.RGBA {
 	m := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
 	draw.Draw(m, m.Bounds(), src, b.Min, draw.Src)
 	return m
-}
-
-func decode(b []byte) []rune {
-	var runes []rune
-	for i := 0; i < len(b); {
-		r, size := utf8.DecodeRune(b[i:])
-		runes = append(runes, r)
-		i += size
-	}
-	return runes
 }
 
 func hideBitsInImage(img *image.RGBA, threeBitChan chan uint8) {
@@ -148,17 +90,16 @@ func encodePNG(filename string, img image.Image) {
 	fmt.Println("Wrote to", filename)
 }
 
-func revealTextInImage(inputFile string) string {
+func RevealTextInImage(inputFile string) string {
 	rgbIm := imageToRGBA(decodeImage(inputFile))
 
 	byteChan := make(chan byte)
-	go BytesFromImage(rgbIm, byteChan)
+	go bytesFromImage(rgbIm, byteChan)
 
 	var bytes []byte
 
 	for v := range byteChan {
 		if v == 0 {
-			fmt.Println("EOF found")
 			break
 		}
 		bytes = append(bytes, v)
@@ -167,40 +108,15 @@ func revealTextInImage(inputFile string) string {
 	return string(decode(bytes))
 }
 
-func hideStringInImage(toHide, inputFile, outputFile string) {
+func HideStringInImage(toHide, inputFile, outputFile string) {
 	rgbIm := imageToRGBA(decodeImage(inputFile))
 
 	input := []byte(toHide)
 	input = append(input, 0)
 	threeBitChan := make(chan byte)
 
-	go BitsInThreesFromBytes(input, threeBitChan)
+	go bitsInThreesFromBytes(input, threeBitChan)
 	hideBitsInImage(rgbIm, threeBitChan)
 
 	encodePNG(outputFile, rgbIm)
-}
-
-func readTextToHide() string {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Text to hide: ")
-	text, err := reader.ReadString('\n')
-	check(err)
-	return strings.TrimSpace(text)
-}
-
-func init() {
-	flag.StringVar(&inputFile, "input", "original.jpeg", "Path to the image used as input")
-	flag.StringVar(&outputFile, "output", "output.png", "When hiding, we will destructively write the new image to this path")
-	flag.BoolVar(&revealing, "reveal", false, "Instead reveal the text hidden in an image")
-
-	flag.Parse()
-}
-
-func main() {
-	if revealing {
-		text := revealTextInImage(inputFile)
-		fmt.Println(text)
-	} else {
-		hideStringInImage(readTextToHide(), inputFile, outputFile)
-	}
 }
