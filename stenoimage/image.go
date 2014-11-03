@@ -18,9 +18,17 @@ func bytesFromImage(img *image.RGBA, byteChan chan byte) {
 	chunkBits(8, bitChan, byteChan)
 }
 
+func coordsFromPixOffset(offset int, img *image.RGBA) (int, int) {
+	y := offset / img.Stride + 1
+	x := offset % img.Stride + 1
+
+	return x, y
+}
+
 func bitsFromImage(img *image.RGBA, bitChan chan uint8) {
-	for pixOffset := 1; ; pixOffset += 1 {
-		r, g, b, _ := img.At(pixOffset, 1).RGBA()
+	for pixCounter := 0; ; pixCounter += 1 {
+		x, y := coordsFromPixOffset(pixCounter, img)
+		r, g, b, _ := img.At(x, y).RGBA()
 		bitChan <- uint8(r) & 1
 		bitChan <- uint8(g) & 1
 		bitChan <- uint8(b) & 1
@@ -42,19 +50,17 @@ func hideBitsInImage(img *image.RGBA, threeBitChan chan uint8) {
 		gBit := (threeBit & 2) >> 1
 		bBit := threeBit & 1
 
-        y := pixCounter / img.Stride + 1
-        x := pixCounter % img.Stride + 1
+		x, y := coordsFromPixOffset(pixCounter, img)
+		r, g, b, a := img.At(x, y).RGBA()
 
-        r, g, b, a := img.At(x, y).RGBA()
+		img.SetRGBA(x, y, color.RGBA{
+			R: (uint8(r) & 0xFE) | rBit,
+			G: (uint8(g) & 0xFE) | gBit,
+			B: (uint8(b) & 0xFE) | bBit,
+			A: uint8(a),
+		})
 
-        img.SetRGBA(x, y, color.RGBA{
-        	R: (uint8(r) & 0xFE) | rBit,
-        	G: (uint8(g) & 0xFE) | gBit,
-        	B: (uint8(b) & 0xFE) | bBit,
-        	A: uint8(a),
-        })
-
-        pixCounter += 1
+		pixCounter += 1
 	}
 	bounds := img.Bounds()
 	min := bounds.Min
