@@ -17,3 +17,15 @@ I decided to not touch the alpha-channel for two reasons: firstly, to make the t
 I also choose sub-optimal approaches in a couple of places so as to be able to play with more Go feature. For example, implementing the 3-bit chunks using a channel of 1-bit integers, which is quite wasteful!
 
 One interesting complication I found was that the pixels bordering the edge of the image seemed to be encoded incorrectly by Go's `image/png` encoder. The pixels are slightly lightened during the encoding process. For that reason, I only use the pixels one row and column in from the edges of the image.
+
+## Examples
+
+This _shouldn't_ be interesting, because the text hidden in the image should be imperceptable.
+
+Original:
+
+![](https://github.com/goodgravy/stegano/blob/master/original.png)
+
+With hidden text:
+
+![](https://github.com/goodgravy/stegano/blob/master/output.png)

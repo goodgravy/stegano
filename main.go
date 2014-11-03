@@ -23,18 +23,15 @@ func init() {
 
 func readTextToHide() string {
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Text to hide: ")
-	text, err := reader.ReadString('\n')
-	if err != nil {
-		panic(err)
-	}
+	fmt.Print("Text to hide (end with ^D): ")
+	text, _ := reader.ReadString(0x04) // ^D
 	return strings.TrimSpace(text)
 }
 
 func main() {
 	if revealing {
 		text := image.RevealTextInImage(inputFile)
-		fmt.Printf("Your text: %q\n", text)
+		fmt.Printf("Your text: \n%v\n", text)
 	} else {
 		image.HideStringInImage(readTextToHide(), inputFile, outputFile)
 	}

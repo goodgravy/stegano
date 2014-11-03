@@ -19,8 +19,10 @@ func bytesFromImage(img *image.RGBA, byteChan chan byte) {
 }
 
 func coordsFromPixOffset(offset int, img *image.RGBA) (int, int) {
-	y := offset / img.Stride + 1
-	x := offset % img.Stride + 1
+	bounds := img.Bounds()
+	width := bounds.Max.X - bounds.Min.X - 2
+	y := offset / width + 1
+	x := offset % width + 1
 
 	return x, y
 }
