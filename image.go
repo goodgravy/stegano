@@ -4,20 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"image"
-	"image/jpeg"
 	"image/color"
+	"image/draw"
+	"image/png"
+	_ "image/jpeg"
 	"os"
+	"unicode/utf8"
 )
-
-type StenoImage struct{
-	original image.Image
-	bitChannel chan uint8
-}
-
-type StenoDecoder struct{
-	modified image.Image
-	bitChannel chan uint8	
-}
 
 func check(e error) {
 	if e != nil {
@@ -25,127 +18,152 @@ func check(e error) {
 	}
 }
 
-func (steno StenoImage) ColorModel() color.Model {
-	return steno.original.ColorModel()
+func BitsInThreesFromBytes(input []byte, threeBitChan chan byte) {
+	bitChan := make(chan uint8)
+
+	go bitsFromBytes(input, bitChan)
+	chunkBits(3, bitChan, threeBitChan)
 }
 
-func (steno StenoImage) Bounds() image.Rectangle {
-	return steno.original.Bounds()
+func BytesFromImage(img *image.RGBA, byteChan chan byte) {
+	bitChan := make(chan uint8)
+
+	go bitsFromImage(img, bitChan)
+	chunkBits(8, bitChan, byteChan)
 }
 
-func (steno StenoImage) At(x, y int) color.Color {
-	originalColor := steno.original.At(x, y)
+func chunkBits(chunkSize int, bitChan chan uint8, byteChan chan byte) {
+	for {
+		current := byte(0)
 
-	bit, more := <-steno.bitChannel
-
-	if ! more {
-		return originalColor
+		for count := chunkSize - 1; count >= 0; count -= 1 {
+			bit, more := <-bitChan
+			current += bit << uint8(count)
+			if ! more {
+				byteChan <- current
+				close(byteChan)
+				return
+			}
+		}
+		byteChan <- current
 	}
-
-	red, green, blue, alpha := trimmedColor(originalColor)
-
-	return color.RGBA{
-		R: red | bit,
-		G: green,
-		B: blue,
-		A: alpha,
-	}
 }
 
-func trimmedColor(originalColor color.Color) (uint8, uint8, uint8, uint8) {
-	fullRed, fullGreen, fullBlue, fullAlpha := originalColor.RGBA()
-	mask := uint8(0xFE)
-
-	return uint8(fullRed) & mask,
-		uint8(fullGreen) & mask,
-		uint8(fullBlue) & mask,
-		uint8(fullAlpha)
-}
-
-func BitsFromBytes(bytes []byte, ch chan uint8) {
-	for _, value := range bytes {
+func bitsFromBytes(input []byte, bitChan chan uint8) {
+	for _, value := range input {
 		for bitIndex := uint8(0); bitIndex < 8; bitIndex += 1 {
-			mask := 128 >> bitIndex
+			mask := 0xFE >> bitIndex
 			bit := value & uint8(mask)
-			ch <- bit >> (7 - bitIndex)
+			bitChan <- bit >> (7 - bitIndex)
 		}
 	}
-	close(ch)
+	close(bitChan)
 }
 
-func BitsFromImage(img image.Image, bitChannel chan uint8) {
-	// TODO
+func bitsFromImage(img *image.RGBA, bitChan chan uint8) {
+	for pixOffset := 1; pixOffset < 25; pixOffset += 1 {
+		r, g, b, _ := img.At(pixOffset, 1).RGBA()
+		bitChan <- uint8(r) & 1
+		bitChan <- uint8(g) & 1
+		bitChan <- uint8(b) & 1
+	}
+	close(bitChan)
 }
 
-func main() {
-    fi, err := os.Open("/tmp/original.jpeg")
-    if err != nil {
-        panic(err)
-    }
-    defer func() {
-        err := fi.Close()
-        check(err)
-    }()
+func imageToRGBA(src image.Image) *image.RGBA {
+	b := src.Bounds()
+	m := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	draw.Draw(m, m.Bounds(), src, b.Min, draw.Src)
+	return m
+}
 
-    fo, err := os.Create("output.jpeg")
-    check(err)
-    defer func() {
-        err := fo.Close()
-        check(err)
-    }()
+func decode(b []byte) []rune {
+	var runes []rune
+	for i := 0; i < len(b); {
+		r, size := utf8.DecodeRune(b[i:])
+		runes = append(runes, r)
+		i += size
+	}
+	return runes
+}
 
-	reader := bufio.NewReader(fi)
-    writer := bufio.NewWriter(fo)
+func hideBitsInImage(img *image.RGBA, threeBitChan chan uint8) {
+	pixCounter := 0
+	for threeBit := range threeBitChan {
+		rBit := (threeBit & 4) >> 2
+		gBit := (threeBit & 2) >> 1
+		bBit := threeBit & 1
+
+        y := pixCounter / img.Stride + 1
+        x := pixCounter % img.Stride + 1
+
+        r, g, b, _ := img.At(x, y).RGBA()
+
+        img.SetRGBA(x, y, color.RGBA{
+        	R: (uint8(r) & 0xFE) | rBit,
+        	G: (uint8(g) & 0xFE) | gBit,
+        	B: (uint8(b) & 0xFE) | bBit,
+        	A: 0xFF,
+        })
+
+        pixCounter += 1
+	}
+}
+
+func decodeFile(filename string) image.Image {
+	inFile, err := os.Open(filename)
+	check(err)
+	defer inFile.Close()
+
+	reader := bufio.NewReader(inFile)
 
 	img, _, err := image.Decode(reader)
 	check(err)
 
-	bitChannel := make(chan uint8)
-	go BitsFromBytes([]byte("hello"), bitChannel)
+	fmt.Println("Read", filename)
+	return img
+}
 
-	steno := StenoImage{
-		original: img,
-		bitChannel: bitChannel,
-	}
-
-    err = jpeg.Encode(writer, steno, nil)
-    check(err)
-
-    fmt.Println("wrote encoded file")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    fi, err = os.Open("output.jpeg")
-    if err != nil {
-        panic(err)
-    }
-    defer func() {
-        err := fi.Close()
-        check(err)
-    }()
-
-	reader = bufio.NewReader(fi)
-
-	img, _, err = image.Decode(reader)
+func encodePNG(filename string, img image.Image) {
+	fo, err := os.Create(filename)
 	check(err)
+	defer fo.Close()
+	defer fo.Sync()
 
-	bitChannel = make(chan uint8)
-	go BitsFromImage(img, bitChannel)
+	writer := bufio.NewWriter(fo)
+	defer writer.Flush()
 
-	for v := range bitChannel {
-		fmt.Println(v)
+	err = png.Encode(writer, img)
+	check(err)
+	fmt.Println("Wrote to", filename)
+}
+
+func main() {
+	rgbIm := imageToRGBA(decodeFile("original.jpeg"))
+
+	input := []byte("hello")
+	input = append(input, 0)
+	threeBitChan := make(chan byte)
+
+	go BitsInThreesFromBytes(input, threeBitChan)
+	hideBitsInImage(rgbIm, threeBitChan)
+
+	encodePNG("output.png", rgbIm)
+
+	rgbIm = imageToRGBA(decodeFile("output.png"))
+
+	byteChan := make(chan byte)
+	go BytesFromImage(rgbIm, byteChan)
+
+	var bytes []byte
+
+	for v := range byteChan {
+		if v == 0 {
+			fmt.Println("EOF found")
+			break
+		}
+		bytes = append(bytes, v)
 	}
 
-	fmt.Println("read encoded file")
+	fmt.Printf("%q\n", string(decode(bytes)))
 }
